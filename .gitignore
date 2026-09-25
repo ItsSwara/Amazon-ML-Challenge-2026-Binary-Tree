@@ -4,6 +4,8 @@ data/processed/
 output/
 artifacts/
 *.tsv
+# ...except the 10k-row mock sample shared with the team
+!data/mock/*.tsv
 
 # Machine-specific config (copy configs/paths.example.yaml to this name)
 configs/paths.local.yaml
