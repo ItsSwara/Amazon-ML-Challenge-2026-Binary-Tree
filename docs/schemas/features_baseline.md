@@ -1,7 +1,8 @@
 # Feature baseline v1 — Sujeet to Shreyashi
 
-This is the working text-feature baseline. Retrieval scores/ranks/margins are pending
-Yash's score contract. Advanced features are intentionally deferred until model error analysis.
+This is the original 12-column text-feature baseline. For actual Yash candidates and
+15-column score/rank/gap integration, use [scored handoff v2](scored_features_v2.md).
+Advanced features are intentionally deferred until model error analysis.
 All feature computation is offline and uses the provided files only.
 
 ## Run on a laptop
@@ -108,7 +109,7 @@ record lookups from an on-disk index or equivalent. Do not point the demo at ful
 Pair/record duplicate and missing-ID checks fail loudly. Pair uniqueness is checked
 within a batch; the full candidate producer must guarantee global uniqueness.
 
-## Pending handoff from Yash
+## Original handoff requirements (implemented for Yash's mock blocker in v2)
 
 Provide actual training and validation candidates, plus per-pair blocking_score with
 its meaning, direction (higher/lower is better), and whether scores are comparable

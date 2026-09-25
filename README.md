@@ -36,7 +36,9 @@ Unimplemented stages contain `.gitkeep` so Git can track the structure.
 
 See [feature contract and local run instructions](docs/schemas/features_baseline.md).
 The mock demo generates 12 text/missingness features and separate fixture labels.
-Actual candidate integration and retrieval rank/margin await the blocking stage.
+For actual Yash blocking candidates, use the [scored feature handoff v2](docs/schemas/scored_features_v2.md).
+It adds score/rank/gap (15 features total), separate labels and split-specific blocking recall.
+This integration is verified on the linked mock; full-scale processing remains pending.
 
 
 ## Setup
