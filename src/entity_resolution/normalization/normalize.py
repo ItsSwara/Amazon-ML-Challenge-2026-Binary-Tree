@@ -56,6 +56,39 @@ SUFFIX_RE = re.compile(
 
 OUTPUT_COLUMNS = ["entity_id", "name_norm", "legal_suffix", "address_norm", "country"]
 
+# A UTF-8 lead byte read as a Latin-1 character, then 1-3 continuation bytes (0x80-0xBF).
+MOJIBAKE_RUN_RE = re.compile(r"[Â-ô][\u0080-¿]{1,3}")
+
+
+def _repair_run(match: re.Match) -> str:
+    """Decode one mojibake run, or return it unchanged.
+
+    The data was title-cased after being mangled, which turned lead bytes like
+    0xE2 ('â') into 0xC2 ('Â'), so when the run does not decode as-is the
+    lowercased lead is tried too. Longest decode wins; trailing chars are kept.
+    """
+    run = match.group()
+    for n in range(min(len(run), 4), 1, -1):
+        for lead in (run[0], run[0].lower()):
+            try:
+                return (lead + run[1:n]).encode("latin-1").decode("utf-8") + run[n:]
+            except UnicodeError:
+                continue
+    return run
+
+
+def repair_mojibake(s: str) -> str:
+    """Undo UTF-8 text that was mis-decoded as Latin-1 (e.g. 'PrÃ©sident' -> 'Président').
+
+    First tries the whole string (latin-1 encode, utf-8 decode). If that raises, as it does for
+    strings that mix mojibake with legitimate characters, only the mojibake runs are repaired.
+    Anything that does not decode is left unchanged; this never raises.
+    """
+    try:
+        return s.encode("latin-1").decode("utf-8")
+    except UnicodeError:
+        return MOJIBAKE_RUN_RE.sub(_repair_run, s)
+
 
 def normalize_text(s: pd.Series) -> pd.Series:
     """Null-coerce, strip control chars, transliterate, lowercase, strip punctuation.
@@ -65,6 +98,10 @@ def normalize_text(s: pd.Series) -> pd.Series:
     s = s.astype(object)
     null = s.isna() | s.str.strip().str.lower().isin(NULL_TOKENS)
     s = s.mask(null)
+
+    # Mojibake repair must precede the control-char strip: its continuation bytes are C1 controls.
+    suspect = s.notna() & s.str.contains(MOJIBAKE_RUN_RE, regex=True).fillna(False).astype(bool)
+    s = s.mask(suspect, s.where(suspect).map(repair_mojibake, na_action="ignore"))
 
     s = s.str.replace(CONTROL_CHARS_RE, " ", regex=True)
 

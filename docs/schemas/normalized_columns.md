@@ -85,17 +85,22 @@ Regenerate with `python src/entity_resolution/normalization/normalize.py --sourc
 ### Normalization steps (applied in this order, to `business_name` and `business_address`)
 
 1. Null-token check on the raw value (see above).
-2. Replace control characters `[\x00-\x1F\x7F-\x9F]` with a space.
-3. `unidecode` transliteration to ASCII (Devanagari, accented French, etc.).
-4. Lowercase.
-5. `&` becomes ` and `. Apostrophes are deleted (`mcdonald's` to `mcdonalds`). Dots between
+2. Repair mojibake (UTF-8 text mis-decoded as Latin-1, e.g. `Ã‚\x80\x93` for an en-dash,
+   `Ã¢\x80\x99` for an apostrophe). Tries latin-1 encode then utf-8 decode on the whole string;
+   if that raises (mixed strings, or title-casing turned lead byte `Ã¢` into `Ã‚`), repairs just the
+   mojibake runs. Undecodable text is left unchanged, and clean text (`PrÃ©sident`, Devanagari) is
+   never altered. Must run before step 3 because the continuation bytes are C1 control chars.
+3. Replace control characters `[\x00-\x1F\x7F-\x9F]` with a space.
+4. `unidecode` transliteration to ASCII (Devanagari, accented French, etc.).
+5. Lowercase.
+6. `&` becomes ` and `. Apostrophes are deleted (`mcdonald's` to `mcdonalds`). Dots between
    single letters are deleted (`l.l.c.` to `llc`).
-6. Every other non-alphanumeric character becomes a space; whitespace is collapsed and trimmed.
-7. Names only: trailing legal-form tokens (see `LEGAL_SUFFIXES` in
+7. Every other non-alphanumeric character becomes a space; whitespace is collapsed and trimmed.
+8. Names only: trailing legal-form tokens (see `LEGAL_SUFFIXES` in
    `normalization/normalize.py`) are moved to `legal_suffix` in canonical form (`corporation` to
    `corp`, `limited` to `ltd`, `private limited` to `pvt ltd`, ...). A name that would be left empty
    keeps its text and gets NaN suffix.
-8. Empty result becomes NaN.
+9. Empty result becomes NaN.
 
 ## Ground truth in code
 
