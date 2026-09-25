@@ -19,7 +19,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import pyarrow as pa  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
@@ -28,7 +27,8 @@ from unidecode import unidecode  # noqa: E402
 from entity_resolution.config import REPO_ROOT, get_dataset_dir, get_mock_dir  # noqa: E402
 
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F-\x9F]")
-NULL_TOKENS = {"", "null", "nan", "none", "n/a", "-"}
+# Same placeholder set as audit/stage1_data_audit.py (plus the empty string).
+NULL_TOKENS = {"", "null", "nan", "none", "n/a", "na", "nil", "-", "--", "\\n"}
 
 # Legal-form token -> canonical form. Only trailing tokens of a name are extracted.
 LEGAL_SUFFIXES = {
@@ -127,7 +127,6 @@ def check_invariants(out: pd.DataFrame, n_in: int) -> None:
         vals = out[col].dropna().astype(object)
         bad = ~vals.str.fullmatch(clean)
         assert not bad.any(), f"{col}: {int(bad.sum())} values not [a-z0-9 ] / trimmed, e.g. {vals[bad].iloc[0]!r}"
-        assert not vals.isin(NULL_TOKENS).any(), f"{col} holds a null-token string"
     assert out.loc[out["name_norm"].isna(), "legal_suffix"].isna().all()
 
 

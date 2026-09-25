@@ -46,8 +46,10 @@ Regenerate with `python src/entity_resolution/normalization/normalize.py --sourc
 
 - Missing is a true NaN (`pd.NA`/`np.nan`), **never** the strings `""`, `"null"`, `"nan"`, `"-"`
   and **never** `0` or any other imputed value.
-- Input values that are empty/whitespace, or one of `null`, `nan`, `none`, `n/a`, `-` (any case,
-  surrounding whitespace ignored), become NaN.
+- Input values that are empty/whitespace, or one of `null`, `nan`, `none`, `n/a`, `na`, `nil`, `-`,
+  `--`, `\N` (any case, surrounding whitespace ignored), become NaN. This is the same set the
+  Stage 1 audit counted as null-like. Only whole-field matches count: a business genuinely named
+  "Nan Inc." stays `name_norm="nan"`, `legal_suffix="inc"`.
 - A field that is empty after normalization (e.g. a name that was only punctuation) becomes NaN.
 - A missing name gives NaN in both `name_norm` and `legal_suffix`. `legal_suffix` is also NaN when
   the name has no recognised suffix; it is not an error and not the empty string.
