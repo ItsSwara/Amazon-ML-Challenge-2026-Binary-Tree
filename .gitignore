@@ -1,5 +1,6 @@
 # Data and generated outputs (never commit datasets)
 data/raw/
+dataset/
 data/processed/
 output/
 artifacts/

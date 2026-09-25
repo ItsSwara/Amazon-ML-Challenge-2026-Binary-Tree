@@ -5,3 +5,4 @@ pyarrow
 unidecode
 scikit-learn
 faiss-cpu
+lightgbm
