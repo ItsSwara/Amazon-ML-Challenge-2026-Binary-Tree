@@ -6,14 +6,41 @@ to produce these columns.
 
 ## Mock data (`data/mock/`)
 
-The first 10,000 data rows of each of the 7 dataset files, byte-for-byte, same filenames
+A small linked sample of the 7 dataset files, rows copied byte-for-byte with the original filenames
 (`train_source1/2/3.tsv`, `train_ground_truth.tsv`, `test_source1/2/3.tsv`), flat in one folder.
-Regenerate with `python src/entity_resolution/data/make_mock.py`.
+Row order within each file is shuffled (fixed seed). Regenerate with
+`python src/entity_resolution/data/make_mock.py` (`--refs`, `--seed` to change).
 
-> Caveat: the dataset files are not sorted by ID or linked by position. In the mock, the ground
-> truth rows are a different 10k references than the `train_source1` rows, and only ~0.2% of the
-> matched S2/S3 IDs appear in the mock S2/S3 files. Use the mock to exercise parsing, normalization
-> and schemas, not to measure match quality.
+### Train side: fully linked
+
+| File | Rows | Contents |
+|---|---|---|
+| `train_source1.tsv` | 2,000 | The 2,000 lowest-numbered references (by numeric ID). 1,202 US / 798 India. |
+| `train_ground_truth.tsv` | 2,000 | Their ground-truth rows, verbatim. 91 references (4.55%) have no matches; 5.55% have 1; 89.9% have 2+. |
+| `train_source2.tsv` | 6,706 | 3,353 rows matched to those references + 3,353 random rows matched to none of them. |
+| `train_source3.tsv` | 7,270 | 3,635 rows matched to those references + 3,635 random rows matched to none of them. |
+
+- **Match rate: 100% of the 6,988 matched IDs in the mock ground truth are present in the mock
+  S2/S3 files** (not ~0.2%, as in the earlier head-of-file mock). You can compute real precision,
+  recall and F0.5 on it.
+- About half of each mock S2/S3 file is matched; the other half are genuine negatives (rows that
+  belong to none of the 2,000 references). The real files are about 73% matched, so a mock-trained
+  model sees a higher negative rate than production.
+- The negatives are any S2/S3 rows not matched to the 2,000 mock references. About 73% of them
+  belong to *other* references in the full dataset, so they are realistic distractors, not junk.
+- The 2,000 references are the lowest-numbered IDs, not a uniform random sample. Country and match
+  count mix are close to the full data (89.9% have 2+ matches vs 89.0%), but treat any statistic
+  from 2,000 references as noisy.
+
+### Test side: NOT reliably linked
+
+There is no test ground truth, so the test mock cannot be linked the way the train mock is.
+`test_source1.tsv` holds the 2,000 lowest-numbered test references (931 India, 757 US, 312 France).
+`test_source2.tsv` (5,642 rows) and
+`test_source3.tsv` (5,867 rows) are uniform random samples sized in proportion to the full files
+(2,000 / 1,732,544 of each). Because they are random, almost none of the true matches for the 2,000
+test references are in them. Use the test mock to check parsing, normalization and inference plumbing
+(including France text), never to estimate match quality.
 
 ## Raw schema (unchanged)
 
