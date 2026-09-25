@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from entity_resolution.config import get_dataset_dir  # noqa: E402
 
-REQUIRED = ["train_source1.tsv", "test_source1.tsv"]
+REQUIRED = ["train/train_source1.tsv", "test/test_source1.tsv"]
 
 
 def main() -> int:

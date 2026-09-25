@@ -33,7 +33,7 @@ def _load_paths() -> dict:
 
 
 def get_dataset_dir() -> Path:
-    """Absolute path to the folder holding train_source1.tsv, test_source1.tsv, etc."""
+    """Absolute path to the dataset folder containing the train/ and test/ subfolders."""
     return Path(_load_paths()["dataset_dir"])
 
 
