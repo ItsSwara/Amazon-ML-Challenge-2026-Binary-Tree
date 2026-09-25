@@ -1,9 +1,10 @@
 # Scored feature handoff v2 — Sujeet to Shreyashi
 
-This runner integrates Yash's actual Top-50 blocker with the existing text features
-on the linked **training mock**. No positive candidates are injected from truth.
-It preserves the upstream blocking algorithm and independently evaluates recall on
-the frozen train/validation reference sets. It is not a full-dataset benchmark.
+This runner combines Yash's Top-50 blocking candidates with the existing text features
+on the linked **training mock**. It does not generate candidates: they must be supplied
+as a scored TSV produced by the blocking stage. No positive candidates are injected
+from truth. It independently evaluates recall on the frozen train/validation reference
+sets. It is not a full-dataset benchmark.
 
 ## Run locally
 
@@ -12,18 +13,14 @@ From the repository root in PowerShell, using Python 3.12 and the pinned feature
 ```powershell
 .venv\Scripts\python.exe -m pip install -r requirements-features.txt
 .venv\Scripts\python.exe src/entity_resolution/normalization/normalize.py --source mock
-.venv\Scripts\python.exe scripts/run_blocking_features.py --output artifacts/scored_mock_v2
+.venv\Scripts\python.exe scripts/run_blocking_features.py --pairs path/to/scored_candidates.tsv --output artifacts/scored_mock_v2
 .venv\Scripts\python.exe -m pytest -q
 ```
 
 If your environment is outside the repository, substitute its Python executable.
-Use a fresh output folder for every run; overwriting is refused. The default runner
-calls functions from Yash's `blocking/blocker.py`, avoiding its output filename mismatch.
-To reuse his already generated **pair-level scored file for this exact mock**:
-
-```powershell
-.venv\Scripts\python.exe scripts/run_blocking_features.py --pairs artifacts/scored_mock_v2/scored_candidates.tsv --output artifacts/scored_mock_replay --batch-size 137
-```
+Use a fresh output folder for every run; overwriting is refused. `--pairs` is required:
+run the blocking stage first and pass its **pair-level scored file for this exact mock**.
+The runner never imports or calls `blocking/blocker.py`.
 
 Input TSV columns: `source1_entity_id`, `candidate_entity_id`, `score`. Higher score
 is better. Scores are checked against Yash's [0, 1.05] range, with 1e-6 roundoff
