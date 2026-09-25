@@ -1,0 +1,2 @@
+dataset_dir: "/absolute/path/to/your/student_resource/dataset"
+mock_dir: "data/mock"

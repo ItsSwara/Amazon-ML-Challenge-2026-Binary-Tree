@@ -30,3 +30,15 @@ README.md
 ```
 
 Empty directories contain `.gitkeep` so Git can track the structure.
+
+
+## Setup
+
+Each teammate does this once, individually. Nobody shares `paths.local.yaml`.
+
+1. `pip install -r requirements.txt`
+2. Copy `configs/paths.example.yaml` to `configs/paths.local.yaml`.
+3. Edit `configs/paths.local.yaml` and set `dataset_dir` to your own local dataset folder (the one containing the `train/` and `test/` subfolders).
+4. Verify: `python scripts/smoke_test_paths.py`
+
+`configs/paths.local.yaml` is gitignored. In code, use `from entity_resolution.config import get_dataset_dir` instead of hardcoding paths.
