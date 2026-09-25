@@ -3,3 +3,5 @@ numpy
 pandas
 pyarrow
 unidecode
+scikit-learn
+faiss-cpu
