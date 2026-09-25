@@ -30,7 +30,9 @@ so pandas does not do its own NaN coercion or quote handling; the normalizer own
 ## Normalized source tables
 
 One row per input row, same row count and order as the input. Identical for every source file
-(S1, S2, S3; train and test). Stored as Parquet, all columns pandas `string` dtype.
+(S1, S2, S3; train and test). Stored as Parquet under `data/processed/normalized/<file>.parquet`
+(`normalized_mock/` for the mock), all columns pandas string dtype with NaN as the missing value.
+Regenerate with `python src/entity_resolution/normalization/normalize.py --source mock|real`.
 
 | Column | Type | Missing? | Description |
 |---|---|---|---|
