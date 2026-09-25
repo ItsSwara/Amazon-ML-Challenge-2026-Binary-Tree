@@ -1,6 +1,8 @@
-"""Run Yash's blocker on normalized MOCK data and export a scored feature handoff.
+"""Turn a scored candidate TSV from the blocking stage into a MOCK feature handoff.
 
-This is a small-data integration runner, not the full-scale production pipeline.
+Candidates are supplied as a file (source1_entity_id, candidate_entity_id, score);
+this runner does not call the blocker. It is a small-data integration runner, not
+the full-scale production pipeline.
 """
 import argparse
 import csv
@@ -13,7 +15,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from entity_resolution.blocking import blocker
 from entity_resolution.features.baseline import FeatureExtractor, ID_COLUMNS, join_pairs
 from entity_resolution.features.demo import file_hash, intersect_ids, training_corpus
 from entity_resolution.features.scored import (
@@ -21,18 +22,7 @@ from entity_resolution.features.scored import (
 )
 
 
-def generate_candidates(s1, s2, s3):
-    """Call Yash's retrieval functions without changing his score or candidate set."""
-    candidates = blocker.build_candidate_pool(s2, s3)
-    name_s1, name_candidates = blocker.build_tfidf(s1, candidates, 'name_norm')
-    addr_s1, addr_candidates = blocker.build_tfidf(s1, candidates, 'address_norm')
-    token_index = blocker.build_token_index(candidates)
-    _, pairs = blocker.retrieve_top_k(s1, candidates, name_s1, name_candidates,
-                                      addr_s1, addr_candidates, token_index, top_k=50)
-    return pairs
-
-
-def run(repo, out, pairs_path=None, batch_size=1000):
+def run(repo, out, pairs_path, batch_size=1000):
     repo, out = Path(repo), Path(out)
     if out.exists():
         raise ValueError(f'Output already exists: {out}; choose a fresh directory')
@@ -45,7 +35,7 @@ def run(repo, out, pairs_path=None, batch_size=1000):
     records = pd.concat(sources, ignore_index=True)
     if len(records) > 100_000:
         raise ValueError('Mock-only runner limit: 100,000 normalized records. Use a production batch lookup for full data.')
-    # Validate records and truth before fitting or generating candidates.
+    # Validate records and truth before fitting or reading candidates.
     if not records.entity_id.is_unique or records.entity_id.isna().any():
         raise ValueError('Normalized record IDs must be unique and non-null')
     for source, prefix in zip(sources, ['S1-', 'S2-', 'S3-']):
@@ -70,13 +60,9 @@ def run(repo, out, pairs_path=None, batch_size=1000):
         raise ValueError('Frozen split must partition all mock references')
 
     retrieval_start = time.perf_counter()
-    if pairs_path is None:
-        print('Running Yash mock blocking, Top-50...', flush=True)
-        raw_pairs = generate_candidates(*sources)
-    else:
-        pairs_path = Path(pairs_path).resolve()
-        raw_pairs = pd.read_csv(pairs_path, sep='\t', dtype=str, keep_default_na=False,
-                                quoting=csv.QUOTE_NONE, encoding='utf-8-sig')
+    pairs_path = Path(pairs_path).resolve()
+    raw_pairs = pd.read_csv(pairs_path, sep='\t', dtype=str, keep_default_na=False,
+                            quoting=csv.QUOTE_NONE, encoding='utf-8-sig')
     retrieval_seconds = time.perf_counter() - retrieval_start
     scored = add_retrieval_features(raw_pairs)
     if scored.groupby('source1_entity_id').size().gt(50).any():
@@ -95,13 +81,11 @@ def run(repo, out, pairs_path=None, batch_size=1000):
               'gap': 'highest score minus second-highest; repeated per reference; NaN if only one candidate',
               'score': 'max(name char TF-IDF cosine, address char TF-IDF cosine) + 0.05 for any token overlap'}
     (out / 'feature_schema.json').write_text(json.dumps(schema, indent=2), encoding='utf-8')
-    inputs = [*source_paths, truth_path, train_path, val_path]
-    if pairs_path is not None:
-        inputs.append(pairs_path)
+    inputs = [*source_paths, truth_path, train_path, val_path, pairs_path]
     summary = {
         'status': 'complete', 'scope': 'linked_mock_actual_blocking_not_full_dataset',
         'schema_version': SCHEMA_VERSION, 'batch_size': batch_size,
-        'candidate_source': 'yash_blocker' if pairs_path is None else 'supplied_scored_tsv',
+        'candidate_source': 'supplied_scored_tsv',
         'score_contract': schema['score'], 'fit_records': len(fit_records),
         'fit_policy': 'feature TF-IDF/IDF fitted on frozen training references and their true targets only',
         'blocking_fit_policy': 'Yash fits separate char vectorizers on the complete mock S2/S3 pool, including validation targets; no truth labels used',
@@ -111,8 +95,8 @@ def run(repo, out, pairs_path=None, batch_size=1000):
                      ['numpy', 'pandas', 'pyarrow', 'scikit-learn', 'rapidfuzz', 'joblib']},
         'python': platform.python_version(), 'splits': {},
         'source_sha256': {str(Path(path).name): file_hash(Path(path)) for path in
-                          [__file__, blocker.__file__,
-                           Path(__file__).with_name('scored.py'), Path(__file__).with_name('baseline.py')]},
+                          [__file__, Path(__file__).with_name('scored.py'),
+                           Path(__file__).with_name('baseline.py')]},
     }
     for name, ids in [('train', train_ids), ('validation', val_ids)]:
         selected = scored[scored.source1_entity_id.isin(ids)].reset_index(drop=True)
@@ -146,7 +130,9 @@ def main():
     repo = Path(__file__).resolve().parents[3]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=repo / 'artifacts/scored_mock_v2')
-    parser.add_argument('--pairs', type=Path, help='Optional Yash pair-level scored TSV for this exact mock')
+    parser.add_argument('--pairs', type=Path, required=True,
+                        help='Pre-generated scored candidate TSV from the blocking stage for this exact mock '
+                             '(columns: source1_entity_id, candidate_entity_id, score)')
     parser.add_argument('--batch-size', type=int, default=1000)
     args = parser.parse_args()
     summary = run(repo, args.output, args.pairs, args.batch_size)
