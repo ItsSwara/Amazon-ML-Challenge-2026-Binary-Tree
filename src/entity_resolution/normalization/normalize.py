@@ -100,12 +100,12 @@ def normalize_text(s: pd.Series) -> pd.Series:
     s = s.mask(null)
 
     # Mojibake repair must precede the control-char strip: its continuation bytes are C1 controls.
-    suspect = s.notna() & s.str.contains(MOJIBAKE_RUN_RE, regex=True).fillna(False).astype(bool)
+    suspect = s.notna() & s.str.contains(MOJIBAKE_RUN_RE, regex=True, na=False)
     s = s.mask(suspect, s.where(suspect).map(repair_mojibake, na_action="ignore"))
 
     s = s.str.replace(CONTROL_CHARS_RE, " ", regex=True)
 
-    non_ascii = s.notna() & ~s.str.isascii().fillna(True).astype(bool)
+    non_ascii = s.notna() & s.str.contains(r"[^\x00-\x7F]", regex=True, na=False)
     s = s.mask(non_ascii, s.where(non_ascii).map(unidecode, na_action="ignore"))
 
     s = s.str.lower()
@@ -142,7 +142,7 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
             "country": df["country"].str.strip().to_numpy(),
         }
     )
-    return out.astype({c: "str" for c in OUTPUT_COLUMNS})
+    return out.astype({c: "string" for c in OUTPUT_COLUMNS})
 
 
 def read_raw(path: Path, chunksize: int | None = None):

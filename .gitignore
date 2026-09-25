@@ -13,6 +13,8 @@ configs/paths.local.yaml
 # Python
 __pycache__/
 *.pyc
+.venv/
+.pytest_cache/
 
 # OS / secrets
 .DS_Store

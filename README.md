@@ -1,6 +1,7 @@
 # Amazon ML Challenge 2026 — Binary Tree
 
-Repository structure only. No implementation, dependencies, or datasets added.
+Entity-resolution pipeline under development. Data audit, normalization, frozen splits,
+scoring and a local feature-engineering baseline are available.
 
 ```text
 data/
@@ -29,7 +30,13 @@ requirements.txt
 README.md
 ```
 
-Empty directories contain `.gitkeep` so Git can track the structure.
+Unimplemented stages contain `.gitkeep` so Git can track the structure.
+
+## Feature baseline
+
+See [feature contract and local run instructions](docs/schemas/features_baseline.md).
+The mock demo generates 12 text/missingness features and separate fixture labels.
+Actual candidate integration and retrieval rank/margin await the blocking stage.
 
 
 ## Setup
