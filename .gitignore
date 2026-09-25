@@ -1,0 +1,17 @@
+# Data and generated outputs (never commit datasets)
+data/raw/
+data/processed/
+output/
+artifacts/
+*.tsv
+
+# Machine-specific config (copy configs/paths.example.yaml to this name)
+configs/paths.local.yaml
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / secrets
+.DS_Store
+.env
