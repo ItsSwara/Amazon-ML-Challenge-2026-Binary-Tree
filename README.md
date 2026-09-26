@@ -41,6 +41,11 @@ It takes a pre-generated scored candidate TSV (it does not run the blocker) and 
 score/rank/gap (15 features total), separate labels and split-specific blocking recall.
 This integration is verified on the linked mock; full-scale processing remains pending.
 
+See the [inference feature review](docs/reports/2026-09-26-inference-feature-review.md)
+for streaming regression fixes, a 2-million-row synthetic stress run, and remaining
+full-scale memory/artifact checks. The feature-methodology section is drafted in
+[Documentation_template.md](Documentation_template.md); other sections still need owner review.
+
 
 ## Setup
 

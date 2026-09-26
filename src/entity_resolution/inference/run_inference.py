@@ -1,6 +1,6 @@
 """Stage 8: batched test inference -> output/matching_results.tsv + output/candidate_pairs.tsv.
 
-Memory stays bounded by the batch, not the dataset:
+Feature scoring is bounded by the batch (final assignment/verification is not):
   * candidate pairs (the blocker's candidate_pairs_scored.tsv) are streamed in
     chunks and cut on reference boundaries, so rank/gap features always see a
     complete group;
@@ -14,6 +14,7 @@ batch is scored; references the blocker returned nothing for get an empty row.
 """
 import argparse
 import csv
+import hashlib
 import json
 import sqlite3
 import time
@@ -51,28 +52,54 @@ class RecordStore:
     @classmethod
     def build(cls, path, parquet_paths, batch_rows=200_000):
         path = Path(path)
+        parquet_paths = [Path(p).resolve() for p in parquet_paths]
+        manifest = cls._manifest(parquet_paths)
         expected = sum(pq.ParquetFile(p).metadata.num_rows for p in parquet_paths)
         if path.exists():
             store = cls(path)
-            if store.conn.execute('SELECT COUNT(*) FROM records').fetchone()[0] == expected:
+            try:
+                saved = store.conn.execute('SELECT manifest FROM cache_metadata').fetchone()
+                reusable = (saved is not None and saved[0] == manifest and
+                            store.conn.execute('SELECT COUNT(*) FROM records').fetchone()[0] == expected)
+            except sqlite3.DatabaseError:
+                reusable = False  # Old row-count-only stores must be rebuilt once.
+            if reusable:
                 return store
             store.conn.close()
-            path.unlink()
-        tmp = path.with_suffix('.building')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + '.building')
         tmp.unlink(missing_ok=True)
         conn = sqlite3.connect(tmp)
-        conn.execute('PRAGMA journal_mode=OFF')
-        conn.execute('PRAGMA synchronous=OFF')
-        conn.execute('CREATE TABLE records (entity_id TEXT PRIMARY KEY, name_norm TEXT, '
-                     'address_norm TEXT, country TEXT) WITHOUT ROWID')
-        for p in parquet_paths:
-            for batch in pq.ParquetFile(p).iter_batches(batch_rows, columns=RECORD_COLUMNS):
-                conn.executemany('INSERT INTO records VALUES (?, ?, ?, ?)',
-                                 zip(*(batch.column(c).to_pylist() for c in RECORD_COLUMNS)))
+        try:
+            conn.execute('PRAGMA journal_mode=OFF')
+            conn.execute('PRAGMA synchronous=OFF')
+            conn.execute('CREATE TABLE records (entity_id TEXT PRIMARY KEY, name_norm TEXT, '
+                         'address_norm TEXT, country TEXT) WITHOUT ROWID')
+            for p in parquet_paths:
+                for batch in pq.ParquetFile(p).iter_batches(batch_rows, columns=RECORD_COLUMNS):
+                    conn.executemany('INSERT INTO records VALUES (?, ?, ?, ?)',
+                                     zip(*(batch.column(c).to_pylist() for c in RECORD_COLUMNS)))
+                conn.commit()
+            if cls._manifest(parquet_paths) != manifest:
+                raise ValueError('Normalized files changed while building record store; retry with immutable inputs')
+            conn.execute('CREATE TABLE cache_metadata (manifest TEXT NOT NULL)')
+            conn.execute('INSERT INTO cache_metadata VALUES (?)', (manifest,))
             conn.commit()
-        conn.close()
-        tmp.rename(path)
+        finally:
+            conn.close()
+        tmp.replace(path)  # Keep the previous cache until a complete rebuild exists.
         return cls(path)
+
+    @staticmethod
+    def _manifest(paths):
+        sources = []
+        for path in paths:
+            digest = hashlib.sha256()
+            with path.open('rb') as handle:
+                for block in iter(lambda: handle.read(1024 * 1024), b''):
+                    digest.update(block)
+            sources.append({'path': str(path), 'sha256': digest.hexdigest()})
+        return json.dumps({'version': 1, 'columns': RECORD_COLUMNS, 'sources': sources}, sort_keys=True)
 
     def lookup(self, ids):
         self.conn.execute('CREATE TEMP TABLE IF NOT EXISTS wanted (entity_id TEXT PRIMARY KEY)')
@@ -90,16 +117,20 @@ class RecordStore:
 # Streaming complete reference groups
 # --------------------------------------------------
 
-def reference_batches(pairs_path, chunk_rows):
+def reference_batches(pairs_path, chunk_rows, max_candidates=50):
     """Yield DataFrames holding whole reference groups; a group split across
     reads is carried into the next batch. A reference that reappears after its
     group closed means the file is not grouped, and fails loudly."""
+    if chunk_rows < 1 or max_candidates < 1:
+        raise ValueError('chunk_rows and max_candidates must be positive')
     closed, carry = set(), None
     reader = pd.read_csv(pairs_path, sep='\t', dtype=str, keep_default_na=False,
                          quoting=csv.QUOTE_NONE, encoding='utf-8-sig', chunksize=chunk_rows)
     for chunk in reader:
         if list(chunk.columns) != ID_COLUMNS + ['score']:
             raise ValueError(f'Expected columns {ID_COLUMNS + ["score"]}, got {list(chunk.columns)}')
+        if chunk.empty:
+            continue
         if carry is not None:
             chunk = pd.concat([carry, chunk], ignore_index=True)
         refs = chunk[REF]
@@ -108,17 +139,21 @@ def reference_batches(pairs_path, chunk_rows):
         if not is_tail[np.argmax(is_tail):].all():
             raise ValueError(f'Reference {tail} is not contiguous in {pairs_path}')
         carry, ready = chunk[is_tail], chunk[~is_tail]
+        if len(carry) > max_candidates:
+            raise ValueError(f'Reference {tail} exceeds {max_candidates} candidate limit')
         if len(ready):
-            yield _close_groups(ready, closed)
+            yield _close_groups(ready, closed, max_candidates)
     if carry is not None and len(carry):
-        yield _close_groups(carry, closed)
+        yield _close_groups(carry, closed, max_candidates)
 
 
-def _close_groups(batch, closed):
+def _close_groups(batch, closed, max_candidates=50):
     starts = batch[REF].ne(batch[REF].shift())
     group_ids = batch.loc[starts, REF]
     if not group_ids.is_unique or not closed.isdisjoint(group_ids):
         raise ValueError('Candidate file is not grouped by source1_entity_id')
+    if batch.groupby(REF, sort=False).size().gt(max_candidates).any():
+        raise ValueError(f'Reference exceeds {max_candidates} candidate limit')
     closed.update(group_ids)
     return batch.reset_index(drop=True)
 

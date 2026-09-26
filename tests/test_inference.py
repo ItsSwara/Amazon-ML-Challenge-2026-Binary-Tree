@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from entity_resolution.features.baseline import FeatureExtractor
-from entity_resolution.features.scored import SCORED_FEATURE_COLUMNS
+from entity_resolution.features.baseline import FeatureExtractor, ID_COLUMNS, join_pairs
+from entity_resolution.features.scored import SCORED_FEATURE_COLUMNS, add_retrieval_features
 from entity_resolution.inference.decision import CorroborationRule
 from entity_resolution.inference.run_inference import (
-    CANDIDATE_HEADER, MATCHING_HEADER, RecordStore, reference_batches, run, verify_outputs,
+    CANDIDATE_HEADER, MATCHING_HEADER, RecordStore, reference_batches, run, score_batch, verify_outputs,
 )
-from entity_resolution.models.matcher import save_matcher, train_matcher
+from entity_resolution.models.matcher import load_matcher, predict_proba, save_matcher, train_matcher
 
 PAIRS = [('S1-a', 'S2-x', 0.9), ('S1-a', 'S3-y', 0.5), ('S1-a', 'S2-q', 0.2),
          ('S1-b', 'S2-x', 0.8), ('S1-b', 'S2-z', 0.7), ('S1-c', 'S3-w', 0.95)]
@@ -133,3 +133,39 @@ def test_record_store_rebuilds_when_source_changes(tmp_path):
     store = RecordStore.build(tmp_path / 's.sqlite', paths)
     assert len(store.lookup(['S2-q'])) == 0
     store.close()
+
+
+def test_end_to_end_header_only_input_writes_all_empty_references(tmp_path):
+    norm, pairs = make_split(tmp_path)
+    write_pairs(pairs, [])
+    result = run(pairs, norm, 'test', tmp_path / 'model.joblib', tmp_path / 'extractor.joblib', 0.5,
+                 tmp_path / 'empty-output', tmp_path / 'store.sqlite', 1)
+    assert result['pairs_scored'] == 0
+    assert result['verification']['references'] == 4
+    assert result['verification']['matched_ids'] == 0
+    assert result['verification']['candidate_ids'] == 0
+
+
+def test_streamed_feature_values_equal_direct_complete_group_calculation(tmp_path):
+    norm, path = make_split(tmp_path)
+    # Include a reference with a missing address and a one-candidate (NaN-gap) group.
+    write_pairs(path, PAIRS + [('S1-d', 'S2-z', 0.30000000000000004)])
+    records = pd.concat([pd.read_parquet(norm / f'test_source{i}.parquet') for i in (1, 2, 3)],
+                        ignore_index=True)
+    extractor = FeatureExtractor.load(tmp_path / 'extractor.joblib')
+    model = load_matcher(tmp_path / 'model.joblib')
+    raw = pd.read_csv(path, sep='\t', dtype=str, keep_default_na=False)
+    retrieval = add_retrieval_features(raw)
+    expected = extractor.transform(join_pairs(retrieval, records))
+    expected[retrieval.columns[2:]] = retrieval.iloc[:, 2:].to_numpy()
+    expected['probability'] = predict_proba(model, expected)
+    store = RecordStore.build(tmp_path / 'store.sqlite',
+                              [norm / f'test_source{i}.parquet' for i in (1, 2, 3)])
+    try:
+        actual = pd.concat([score_batch(batch, store, extractor, model)
+                            for batch in reference_batches(path, 1)], ignore_index=True)
+    finally:
+        store.close()
+    columns = ID_COLUMNS + SCORED_FEATURE_COLUMNS + ['probability']
+    pd.testing.assert_frame_equal(expected[columns], actual[columns])
+    assert actual.loc[actual.source1_entity_id == 'S1-d', 'address_tfidf_cosine'].isna().all()
