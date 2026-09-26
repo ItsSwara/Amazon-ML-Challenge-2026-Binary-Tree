@@ -49,6 +49,10 @@ full-scale memory/artifact checks. The feature-methodology section is drafted in
 
 ## Setup
 
+Track reproducible failures and open run risks in [docs/error_log.md](docs/error_log.md).
+Keep full terminal logs in local, gitignored `logs/`; record fixes, verification and
+merge status separately in the shared tracker.
+
 Each teammate does this once, individually. Nobody shares `paths.local.yaml`.
 
 1. `pip install -r requirements.txt`

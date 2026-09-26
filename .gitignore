@@ -4,6 +4,7 @@ dataset/
 data/processed/
 output/
 artifacts/
+logs/
 *.tsv
 # ...except the 10k-row mock sample shared with the team
 !data/mock/*.tsv
